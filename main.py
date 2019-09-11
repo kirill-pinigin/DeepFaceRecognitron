@@ -15,9 +15,9 @@ from SqueezePredictors import  SqueezeSimplePredictor, SqueezeResidualPredictor,
 from NeuralModels import SILU
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--image_dir',      type = str,   default='./AdjustPhotoDataset256/', help='path to dataset')
+parser.add_argument('--image_dir',      type = str,   default='./SmallFaceDataset256/', help='path to dataset')
 parser.add_argument('--result_dir',     type = str,   default='./RESULTS/', help='path to result')
-parser.add_argument('--predictor',      type = str,   default='ResidualPredictor', help='type of image generator')
+parser.add_argument('--predictor',      type = str,   default='SqueezeResidualPredictor', help='type of image generator')
 parser.add_argument('--activation',     type = str,   default='LeakyReLU', help='type of activation')
 parser.add_argument('--criterion',      type = str,   default='BCE', help='type of criterion')
 parser.add_argument('--optimizer',      type = str,   default='Adam', help='type of optimizer')
@@ -76,8 +76,8 @@ data_transforms = {
     'val':      torchvision.transforms.Compose(val_transforms_list),
 }
 
-folder_datasets = {x: torchvision.dataset.Imagefolder(os.path.join(args.image_dir, x))for x in ['train', 'val']}
-image_datasets = {x: FaceDataset(folder_datasets[x], transforms=data_transforms[x])for x in ['train', 'val']}
+folder_datasets = {x: torchvision.datasets.ImageFolder(os.path.join(args.image_dir, x))for x in ['train', 'val']}
+image_datasets = {x: FaceDataset(folder_datasets[x], transform=data_transforms[x])for x in ['train', 'val']}
 
 dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=args.batch_size,
                                              shuffle=shufles[x], num_workers=4)

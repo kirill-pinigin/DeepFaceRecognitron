@@ -23,7 +23,6 @@ class DeepFaceRecognitron(object):
         self.accuracy = torch.nn.L1Loss()
         self.optimizer = optimizer
         self.use_gpu = torch.cuda.is_available()
-        self.dispersion = 1.0
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.cudas = list(range(torch.cuda.device_count()))
 
@@ -73,7 +72,7 @@ class DeepFaceRecognitron(object):
         if resume_train and os.path.isfile(path + '_Best.pth'):
             print( "RESUME training load Bestpredictor")
             self.predictor.load_state_dict(torch.load(path + '_Best.pth'))
-            self.dispersion = dataloaders['train'].dataset.std
+
         since = time.time()
         best_loss = 10000.0
         best_acc = 0.0
@@ -102,23 +101,25 @@ class DeepFaceRecognitron(object):
                 running_corrects = 0
 
                 for data in dataloaders[phase]:
-                    inputs, targets = data
+                    inputs1, inputs2, targets = data
 
-                    inputs = Variable(inputs.to(self.device))
+                    inputs1 = Variable(inputs1.to(self.device))
+                    inputs2 = Variable(inputs2.to(self.device))
                     targets = Variable(targets.to(self.device))
 
                     self.optimizer.zero_grad()
-                    outputs = torch.nn.parallel.data_parallel(module=self.predictor, inputs=inputs, device_ids = self.cudas)
-                    diff = self.accuracy(outputs, targets)
-                    diff = float(1.0) - diff
-                    loss = self.criterion(outputs, targets)
+                    outputs1 = torch.nn.parallel.data_parallel(module=self.predictor, inputs=inputs1, device_ids = self.cudas)
+                    outputs2 = torch.nn.parallel.data_parallel(module=self.predictor, inputs=inputs2,device_ids=self.cudas)
+                    #diff = self.accuracy(outputs, targets)
+                    #diff = float(1.0) - diff
+                    loss = self.criterion(outputs1,outputs2, targets)
 
                     if phase == 'train':
                         loss.backward()
                         self.optimizer.step()
 
-                    running_loss += loss.item() * inputs.size(0)
-                    running_corrects += diff.item() * inputs.size(0)
+                    running_loss += loss.item() * targets.size(0)
+                    #running_corrects += diff.item() * inputs.size(0)
 
                 epoch_loss = float(running_loss) / float(len(dataloaders[phase].dataset))
                 epoch_acc = float(running_corrects) / float(len(dataloaders[phase].dataset))
@@ -134,11 +135,12 @@ class DeepFaceRecognitron(object):
                     phase, epoch_loss, epoch_acc))
                 self.report.flush()
 
-                if phase == 'val' and epoch_acc > best_acc:
+                if phase == 'val' and epoch_loss < best_loss:
                     counter = 0
                     degradation = 0
                     best_acc = epoch_acc
-                    print('curent best_acc ', best_acc)
+                    best_loss = epoch_loss
+                    print('curent best_loss ', best_loss)
                     self.save('Best')
                 else:
                     counter += 1
@@ -154,14 +156,14 @@ class DeepFaceRecognitron(object):
                 counter = 0
                 degradation += 1
             if degradation > DEGRADATION_TOLERANCY:
-                print('This is the end! Best val best_acc: {:4f}'.format(best_acc))
+                print('This is the end! Best val best_loss: {:4f}'.format(best_loss))
                 return best_acc
 
         time_elapsed = time.time() - since
 
         print('Training complete in {:.0f}m {:.0f}s'.format(
             time_elapsed // 60, time_elapsed % 60))
-        print('Best val best_acc: {:4f}'.format(best_acc))
+        print('Best val best_loss: {:4f}'.format(best_loss))
         return best_acc
 
 
