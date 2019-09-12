@@ -48,8 +48,10 @@ class FaceDataset(Dataset):
 
         img0 = Image.open(img0_tuple[0])
         img1 = Image.open(img1_tuple[0])
-        #img0 = img0.convert("L")
-        #img1 = img1.convert("L")
+
+        if CHANNELS == 1:
+            img0 = img0.convert("L")
+            img1 = img1.convert("L")
 
         if self.should_invert:
             img0 = PIL.ImageOps.invert(img0)
@@ -63,55 +65,6 @@ class FaceDataset(Dataset):
 
     def __len__(self):
         return len(self.imageFolderDataset.imgs)
-
-
-class ImagePredictionCSVDataSet(Dataset):
-    def __init__(self, dir, csv_path,  augmentation: bool = False):
-        self.root_dir = dir
-        transforms_list = [
-            torchvision.transforms.CenterCrop(IMAGE_SIZE),
-            torchvision.transforms.ToTensor(),
-        ]
-
-        if augmentation:
-            transforms_list = [
-                                  torchvision.transforms.RandomCrop(IMAGE_SIZE),
-                                  torchvision.transforms.RandomHorizontalFlip(),
-                                  RandomNoise(),
-                                  #RandomBlur(),
-                                  torchvision.transforms.RandomRotation(10),
-
-                              ] + transforms_list
-
-        self.transforms = torchvision.transforms.Compose(transforms_list)
-
-        self.data_info = pd.read_csv(csv_path, header=0)
-        self.image_arr = np.asarray(self.data_info.iloc[0:, 0])
-        self.label_arr = np.asarray(self.data_info.iloc[0:, 1:DIMENSION + 1])
-        self.data_len = len(self.data_info.index)
-        self.statistics()
-
-    def __getitem__(self, index):
-        single_image_name = os.path.join(self.root_dir, self.image_arr[index])
-        img_as_img = load_image(single_image_name)
-        image = self.transforms(img_as_img)
-        target = torch.from_numpy(self.label_arr[index]).float()
-        #target = (target - self.min)/ (self.max - self.min)
-        return image, target
-
-    def __len__(self):
-        return self.data_len
-
-    def statistics(self):
-        print('maximum value = ', np.max(self.label_arr))
-        self.max = float(np.max(self.label_arr))
-        print('minimum value = ', np.min(self.label_arr))
-        self.min = float(np.min(self.label_arr))
-        print('average value = ', np.mean(self.label_arr))
-        self.mean = float(np.mean(self.label_arr))
-        print('dispersion value = ', np.std(self.label_arr))
-        self.std = float(np.std(self.label_arr))
-        print(self.label_arr.shape)
 
 
 def make_dataloaders (dataset, batch_size, splitratio = 0.2):

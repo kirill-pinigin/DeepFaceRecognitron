@@ -2,13 +2,15 @@ import time
 import sys
 import os
 import torch
+import torch.nn.functional as F
 from torch.autograd import Variable
 import shutil
 import numpy as np
 
-IMAGE_SIZE = 256
-CHANNELS = 3
-DIMENSION = 128
+IMAGE_SIZE = 224
+CHANNELS = 1
+DIMENSION = 1
+MARGIN = float(1.25)
 
 LR_THRESHOLD = 1e-7
 TRYING_LR = 3
@@ -16,11 +18,37 @@ DEGRADATION_TOLERANCY = 7
 ACCURACY_TRESHOLD = float(0.0625)
 
 
+class FaceRecognitionAccuracy(torch.nn.Module):
+    def __init__(self):
+        super(FaceRecognitionAccuracy, self).__init__()
+        self.margin = MARGIN
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    def forward(self, output1, output2, label):
+        length = label.size(0)
+        result = torch.zeros(length).to(self.device)
+        for i in range(length):
+            euclidean_distance = F.pairwise_distance(output1, output2, keepdim=True)
+
+            if euclidean_distance[i].item() > self.margin:
+                result[i] = float(1.0)
+            else:
+                result[i] = float(0.0)
+
+        return 1.0 - F.l1_loss(result, label)
+
+        result = result.byte()
+        label = label.byte()
+        intersection = (result & label).float().sum()
+        union = (result | label).float().sum()
+        iou = (intersection + 1e-6) / (union + 1e-6)
+        return iou.mean()
+
 class DeepFaceRecognitron(object):
     def __init__(self, predictor,  criterion, optimizer, directory):
         self.predictor = predictor
         self.criterion = criterion
-        self.accuracy = torch.nn.L1Loss()
+        self.accuracy = FaceRecognitionAccuracy()
         self.optimizer = optimizer
         self.use_gpu = torch.cuda.is_available()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -110,16 +138,15 @@ class DeepFaceRecognitron(object):
                     self.optimizer.zero_grad()
                     outputs1 = torch.nn.parallel.data_parallel(module=self.predictor, inputs=inputs1, device_ids = self.cudas)
                     outputs2 = torch.nn.parallel.data_parallel(module=self.predictor, inputs=inputs2,device_ids=self.cudas)
-                    #diff = self.accuracy(outputs, targets)
-                    #diff = float(1.0) - diff
-                    loss = self.criterion(outputs1,outputs2, targets)
+                    acc = self.accuracy(outputs1, outputs2, targets)
+                    loss = self.criterion(outputs1, outputs2, targets)
 
                     if phase == 'train':
                         loss.backward()
                         self.optimizer.step()
 
                     running_loss += loss.item() * targets.size(0)
-                    #running_corrects += diff.item() * inputs.size(0)
+                    running_corrects += acc.item() * targets.size(0)
 
                 epoch_loss = float(running_loss) / float(len(dataloaders[phase].dataset))
                 epoch_acc = float(running_corrects) / float(len(dataloaders[phase].dataset))
@@ -135,12 +162,12 @@ class DeepFaceRecognitron(object):
                     phase, epoch_loss, epoch_acc))
                 self.report.flush()
 
-                if phase == 'val' and epoch_loss < best_loss:
+                if phase == 'val' and epoch_acc > best_acc:
                     counter = 0
                     degradation = 0
                     best_acc = epoch_acc
                     best_loss = epoch_loss
-                    print('curent best_loss ', best_loss)
+                    print('curent best_acc ', best_acc)
                     self.save('Best')
                 else:
                     counter += 1
@@ -156,24 +183,23 @@ class DeepFaceRecognitron(object):
                 counter = 0
                 degradation += 1
             if degradation > DEGRADATION_TOLERANCY:
-                print('This is the end! Best val best_loss: {:4f}'.format(best_loss))
+                print('This is the end! Best val best_loss: {:4f}'.format(best_acc))
                 return best_acc
 
         time_elapsed = time.time() - since
 
         print('Training complete in {:.0f}m {:.0f}s'.format(
             time_elapsed // 60, time_elapsed % 60))
-        print('Best val best_loss: {:4f}'.format(best_loss))
+        print('Best val best_acc: {:4f}'.format(best_acc))
         return best_acc
 
 
-    def estimate(self, test_loader, isSaveImages = True, modelPath=None):
-        counter = 0
+    def estimate(self, test_loader, modelPath=None):
         if modelPath is not None:
             self.predictor.load_state_dict(torch.load(modelPath))
             print('load Predictor model')
         else:
-            self.predictor.load_state_dict(torch.load(self.modelPath +"/"+ str(self.predictor.__class__.__name__) +  str(self.predictor.activation.__class__.__name__) + '_BestPredictor.pth'))
+            self.predictor.load_state_dict(torch.load(self.modelPath +"/"+ str(self.predictor.__class__.__name__) +  str(self.predictor.activation.__class__.__name__) + '_Best.pth'))
             print('load BestPredictor ')
         print(len(test_loader.dataset))
         i = 0
@@ -183,40 +209,26 @@ class DeepFaceRecognitron(object):
         self.predictor = self.predictor.to(self.device)
         running_loss = 0.0
         running_corrects = 0
+        print(test_loader)
         for data in test_loader:
-            inputs, targets = data
-            inputs = Variable(inputs.to(self.device))
+            inputs1, inputs2, targets = data
+            inputs1 = Variable(inputs1.to(self.device))
+            inputs2 = Variable(inputs2.to(self.device))
             targets = Variable(targets.to(self.device))
-            outputs = self.predictor(inputs)
-            diff = self.accuracy(outputs, targets)
-            diff = float(1.0) - diff
-            loss = self.criterion(outputs, targets)
-            running_loss += loss.item() * inputs.size(0)
-            running_corrects += diff.item() * inputs.size(0)
+            outputs1 = self.predictor(inputs1)
+            outputs2 = self.predictor(inputs2)
 
-            if isSaveImages and test_loader.batch_size == 1:
-                result = torch.round(outputs).data.cpu().numpy()
-                result = np.squeeze(result)
-                indexes = np.nonzero(result)
-                image = inputs.clone()
-                image = image.data.cpu().float()
-                counter = counter + 1
-                if float(diff.item()) > 0.5:
-                    filename = self.images + '/bad/'
-                else:
-                    filename = self.images + '/good/'
-
-                filename+= str(counter) + "__" + str(float(diff.item()))+'__.png'
-                #torchvision.utils.save_image(image, filename)
+            loss = self.criterion(outputs1, outputs2, targets)
+            running_loss += loss.item() * targets.size(0)
 
         epoch_loss = float(running_loss) / float(len(test_loader.dataset))
-        epoch_acc = float(running_corrects) / float(len(test_loader.dataset))
+        #epoch_acc = float(running_corrects) / float(len(test_loader.dataset))
 
         time_elapsed = time.time() - since
 
         print('Evaluating complete in {:.0f}m {:.0f}s'.format(
             time_elapsed // 60, time_elapsed % 60))
-        print('Loss: {:.4f} Accuracy {:.4f} '.format( epoch_loss, epoch_acc))
+        print('Loss: {:.4f} Accuracy {:.4f} '.format( epoch_loss))
         #self.report.flush()
 
     def save(self, model):

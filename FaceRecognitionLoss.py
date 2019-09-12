@@ -1,11 +1,13 @@
 import torch
 import torch.nn.functional as F
 
+from DeepFaceRecognitron import MARGIN
+
 
 class ContrastiveLoss(torch.nn.Module):
-    def __init__(self, margin=2.0):
+    def __init__(self):
         super(ContrastiveLoss, self).__init__()
-        self.margin = margin
+        self.margin = MARGIN
 
     def forward(self, output1, output2, label):
         euclidean_distance = F.pairwise_distance(output1, output2, keepdim = True)
