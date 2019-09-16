@@ -15,14 +15,14 @@ from SqueezePredictors import  SqueezeSimplePredictor, SqueezeResidualPredictor,
 from NeuralModels import SILU
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--image_dir',      type = str,   default='./FaceSmallDataset256/', help='path to dataset')
+parser.add_argument('--image_dir',      type = str,   default='./FakeDataset128/', help='path to dataset')
 parser.add_argument('--result_dir',     type = str,   default='./RESULTS/', help='path to result')
 parser.add_argument('--predictor',      type = str,   default='MobilePredictor', help='type of image generator')
 parser.add_argument('--activation',     type = str,   default='ReLU', help='type of activation')
 parser.add_argument('--optimizer',      type = str,   default='Adam', help='type of optimizer')
 parser.add_argument('--lr',             type = float, default=1e-3)
 parser.add_argument('--l2',             type = float, default=0)
-parser.add_argument('--batch_size',     type = int,   default=32)
+parser.add_argument('--batch_size',     type = int,   default=128)
 parser.add_argument('--epochs',         type = int,   default=64)
 parser.add_argument('--resume_train',   type = bool,  default=True, help='type of training')
 
@@ -58,25 +58,8 @@ criterion = ContrastiveLoss()
 
 augmentations = {'train' : True, 'val' : False}
 shufles = {'train' : True, 'val' : False}
-train_transforms_list = [
-        torchvision.transforms.RandomHorizontalFlip(),
-        torchvision.transforms.ColorJitter(0.2, 0.2),
-        torchvision.transforms.Resize((int(IMAGE_SIZE * 1), int(IMAGE_SIZE * 1)), interpolation=3),
-        torchvision.transforms.ToTensor(),
-        ]
 
-val_transforms_list = [
-        torchvision.transforms.Resize((IMAGE_SIZE, IMAGE_SIZE), interpolation=3),
-        torchvision.transforms.ToTensor(),
-        ]
-
-data_transforms = {
-    'train':    torchvision.transforms.Compose(train_transforms_list ),
-    'val':      torchvision.transforms.Compose(val_transforms_list),
-}
-
-folder_datasets = {x: torchvision.datasets.ImageFolder(os.path.join(args.image_dir, x))for x in ['train', 'val']}
-image_datasets = {x: FaceDataset(folder_datasets[x], transform=data_transforms[x])for x in ['train', 'val']}
+image_datasets = {x: FaceDataset(os.path.join(args.image_dir, x), augmentation=augmentations[x])for x in ['train', 'val']}
 
 dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=args.batch_size,
                                              shuffle=shufles[x], num_workers=4)

@@ -135,7 +135,7 @@ class SqueezeSimplePredictor(nn.Module):
         x = self.fire8(x)
         x = self.predictor(x)
         x = x.view(x.size(0), -1)
-        return torch.sigmoid(x)
+        return x
 
 
 class SqueezeResidualPredictor(SqueezeSimplePredictor):
@@ -182,7 +182,7 @@ class SqueezeResidualPredictor(SqueezeSimplePredictor):
         x = torch.add(x, d3)
         x = self.features(x)
         x = self.predictor(x)
-        return torch.sigmoid(x)
+        return x
 
 
 class SqueezeShuntPredictor(SqueezeResidualPredictor):
@@ -218,4 +218,4 @@ class SqueezeShuntPredictor(SqueezeResidualPredictor):
         x = self.fire8(d3)
         x = self.features(x)
         x = self.predictor(x)
-        return torch.sigmoid(x)
+        return x

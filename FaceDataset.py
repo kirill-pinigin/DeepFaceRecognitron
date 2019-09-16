@@ -23,9 +23,23 @@ def load_image(filepath):
 
 
 class FaceDataset(Dataset):
-    def __init__(self, imageFolderDataset, transform=None, should_invert=True):
-        self.imageFolderDataset = imageFolderDataset
-        self.transform = transform
+    def __init__(self, image_dir, augmentation=True, should_invert=True):
+        self.imageFolderDataset =  torchvision.datasets.ImageFolder(image_dir)
+
+        transforms_list = [
+            torchvision.transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+            torchvision.transforms.ToTensor(),
+        ]
+
+        if augmentation:
+            transforms_list = [
+                                  torchvision.transforms.RandomHorizontalFlip(),
+                                  torchvision.transforms.ColorJitter(0.2, 0.2),
+                                  RandomNoise(),
+                                  RandomSharp(),
+                              ] + transforms_list
+
+        self.transform = torchvision.transforms.Compose(transforms_list)
         self.should_invert = should_invert
 
     def __getitem__(self, index):
@@ -89,24 +103,22 @@ def make_dataloaders (dataset, batch_size, splitratio = 0.2):
 
 import random
 
-class RandomBlur(object):
-    def __init__(self):
-        self.blurring_filters = [ImageFilter.GaussianBlur, ImageFilter.BoxBlur]
-        self.radius = [0, 1]
+class RandomSharp(object):
+    def __init__(self, factor = 0.5):
+        self.range = [0.0, factor]
 
     def __call__(self, input):
-        index = int(random.uniform(0,  len(self.blurring_filters)))
-        radius = np.random.choice(self.radius)
-        blurring_filter = self.blurring_filters[index](radius)
-        return input.filter(blurring_filter)
+        enhancer = ImageEnhance.Sharpness(input)
+        img = enhancer.enhance(random.uniform( self.range[0],  self.range[1]))
+        return img
 
     def __repr__(self):
-        return self.__class__.__name__ + '(p={})'.format(self.blurring_filters)
+        return self.__class__.__name__ + '(p={})'.format(self.factors)
 
 class RandomNoise(object):
     def __init__(self):
         self.noises = [GaussianNoise, UniformNoise]
-        self.factors = [0, 0.01, 0.02]
+        self.factors = [0, 0.02]
 
     def __call__(self, input):
         factor = np.random.choice(self.factors)

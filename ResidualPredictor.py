@@ -160,7 +160,7 @@ class ResidualPredictor(nn.Module):
         x = self.avgpool(x)
 
         x = self.predictor(x)
-        return torch.sigmoid(x)
+        return x
 
     def freeze(self):
         for param in self.model.parameters():

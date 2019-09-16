@@ -171,4 +171,4 @@ class MobilePredictor(nn.Module):
     def forward(self, x):
         x = self.features(x)
         x = self.predictor(x)
-        return torch.sigmoid(x)
+        return x

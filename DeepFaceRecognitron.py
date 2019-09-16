@@ -7,10 +7,10 @@ from torch.autograd import Variable
 import shutil
 import numpy as np
 
-IMAGE_SIZE = 224
+IMAGE_SIZE = 128
 CHANNELS = 1
-DIMENSION = 1
-MARGIN = float(1.25)
+DIMENSION = 128
+MARGIN = float(2.0)
 
 LR_THRESHOLD = 1e-7
 TRYING_LR = 3
@@ -21,28 +21,25 @@ ACCURACY_TRESHOLD = float(0.0625)
 class FaceRecognitionAccuracy(torch.nn.Module):
     def __init__(self):
         super(FaceRecognitionAccuracy, self).__init__()
-        self.margin = MARGIN
+        self.margin = MARGIN / 3.0
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    def forward(self, output1, output2, label):
-        length = label.size(0)
-        result = torch.zeros(length).to(self.device)
+    def forward(self, output1, output2, desire):
+        length = desire.size(0)
+        actual = torch.zeros(length).float().to(self.device)
+        desire = desire.float()
+
         for i in range(length):
             euclidean_distance = F.pairwise_distance(output1, output2, keepdim=True)
-
             if euclidean_distance[i].item() > self.margin:
-                result[i] = float(1.0)
+                actual[i] = float(1.0)
             else:
-                result[i] = float(0.0)
+                actual[i] = float(0.0)
 
-        return 1.0 - F.l1_loss(result, label)
-
-        result = result.byte()
-        label = label.byte()
-        intersection = (result & label).float().sum()
-        union = (result | label).float().sum()
-        iou = (intersection + 1e-6) / (union + 1e-6)
-        return iou.mean()
+        actual = actual.unsqueeze(1)
+        intersection = (actual * desire).sum()
+        union = actual.sum() + desire.sum() - intersection
+        return (intersection + 1e-6) / (union + 1e-6)
 
 class DeepFaceRecognitron(object):
     def __init__(self, predictor,  criterion, optimizer, directory):
@@ -183,7 +180,7 @@ class DeepFaceRecognitron(object):
                 counter = 0
                 degradation += 1
             if degradation > DEGRADATION_TOLERANCY:
-                print('This is the end! Best val best_loss: {:4f}'.format(best_acc))
+                print('This is the end! Best val best_acc: {:4f}'.format(best_acc))
                 return best_acc
 
         time_elapsed = time.time() - since
