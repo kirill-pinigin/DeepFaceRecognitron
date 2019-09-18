@@ -8,6 +8,7 @@ class ContrastiveLoss(torch.nn.Module):
     def __init__(self):
         super(ContrastiveLoss, self).__init__()
         self.margin = MARGIN
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     def forward(self, output1, output2, label):
         euclidean_distance = F.pairwise_distance(output1, output2, keepdim = True)

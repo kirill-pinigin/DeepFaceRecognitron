@@ -10,7 +10,7 @@ import numpy as np
 IMAGE_SIZE = 128
 CHANNELS = 1
 DIMENSION = 128
-MARGIN = float(2.0)
+MARGIN = 1.25
 
 LR_THRESHOLD = 1e-7
 TRYING_LR = 3
@@ -21,8 +21,17 @@ ACCURACY_TRESHOLD = float(0.0625)
 class FaceRecognitionAccuracy(torch.nn.Module):
     def __init__(self):
         super(FaceRecognitionAccuracy, self).__init__()
-        self.margin = MARGIN / 3.0
+        self.margin = MARGIN / 2.0
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    def euclidean(self, a, b):
+        length = a.size(0)
+        result = torch.zeros(length).float().to(self.device)
+
+        for i in range(length):
+            result[i] = torch.sqrt(torch.pow((a[i] - b[i]), 2).sum())
+
+        return result
 
     def forward(self, output1, output2, desire):
         length = desire.size(0)
@@ -30,8 +39,8 @@ class FaceRecognitionAccuracy(torch.nn.Module):
         desire = desire.float()
 
         for i in range(length):
-            euclidean_distance = F.pairwise_distance(output1, output2, keepdim=True)
-            if euclidean_distance[i].item() > self.margin:
+            euclidean_distance = self.euclidean(output1, output2)
+            if euclidean_distance[i].sum() > self.margin:
                 actual[i] = float(1.0)
             else:
                 actual[i] = float(0.0)
